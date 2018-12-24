@@ -1,3 +1,4 @@
+#include <EEPROM.h>
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -8,15 +9,21 @@
 
 int safetyCheck = 1;
 int counter = 0;
+int EEPROMcounter = 0;
+// multiply this value by the updateRate+50ms to get time between EEPROM savings
+const int EEPROMtime = 10;
+int EEPROMadress = 0;
 
 // debug:
 // 0: nothing is printed
 // 1: light debug
 // 2: verbose debug
-int debug = 2;
+int debug = 0;
 
 const float onTemp = 25;
 const float offTemp = 27;
+// time between measurements in ms
+const int updateRate = 100;
 
 const int relayPin = 4;
 const int relayPin2 = 1;
@@ -55,30 +62,14 @@ void setup() {
   Serial.begin(9600);
   // 3.3V analog reference
   analogReference(EXTERNAL);
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
-    Serial.println(F("SSD1306 allocation failed"));
-    for(;;); // Don't proceed, loop forever
-  }
-  // Clear the buffer
-  display.clearDisplay();
-  display.setTextSize(2);             // Normal 1:1 pixel scale
-  display.setTextColor(WHITE);        // Draw white text
-  display.setCursor(0,0);             // Start at top-left corner
-  display.display();      // Show initial text
-
-  // set up the relay to be off on default for safety.
-  pinMode(relayPin,OUTPUT);
-  digitalWrite(relayPin, HIGH);
-  // set up ground to be HIGH on default for sensor temperature.
-  pinMode(groundPin,OUTPUT);
-  digitalWrite(groundPin, HIGH);
+  initDisplay();
+  initRelays();
   // put Vcc to correct value
   setvCC();
-  
 }
-
 void loop() {
   if(counter>9){counter = 0;}
+  // reads the sensors, getTemp takes at least 50ms
   float* temp = getTemp();
   if(debug){
     Serial.println("temp: ");
@@ -98,10 +89,72 @@ void loop() {
   }
   putRelay(temp);
   showValues(temp);
-  delay(100);
+  if(EEPROMcounter>EEPROMtime){
+    saveToEEPROM(temp[0]);
+    EEPROMcounter = 0;}
+  checkSerialandSend();
+  delay(updateRate);
   counter++;
+  EEPROMcounter++;
 }
 
+void checkSerialandSend(){
+  if (Serial.available() > 0) {
+    Serial.read();
+    for (int i = 0 ; i < EEPROM.length() ; i++) {
+      Serial.print(EEPROM.read(i));
+      Serial.print(";");
+    }
+  }
+}
+
+// saves value to current EEPROM adress and writes a 254 to the next value
+void saveToEEPROM(float value){
+  byte rvalue = round(value);
+  if(rvalue<250){
+  EEPROM.write(EEPROMadress, rvalue);
+  EEPROMadress++;
+  if(EEPROMadress == EEPROM.length()){
+    EEPROMadress = 0;
+    }
+  EEPROM.write(EEPROMadress, byte(250));
+  }
+}
+
+// sets up relayPins and the res ground pin
+void initRelays(){
+  // set up the relay to be off on default for safety.
+  pinMode(relayPin,OUTPUT);
+  digitalWrite(relayPin, HIGH);
+  pinMode(relayPin2,OUTPUT);
+  digitalWrite(relayPin2, HIGH);
+  // set up ground to be HIGH on default for sensor temperature.
+  pinMode(groundPin,OUTPUT);
+  digitalWrite(groundPin, HIGH);
+}
+
+// sets up the oled display
+void initDisplay(){
+    if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3C for 128x32
+    Serial.println(F("SSD1306 allocation failed"));
+    for(;;); // Don't proceed, loop forever
+  }
+  // Clear the buffer
+  display.clearDisplay();
+  display.setTextSize(2);             // Normal 1:1 pixel scale
+  display.setTextColor(WHITE);        // Draw white text
+  display.setCursor(0,0);             // Start at top-left corner
+  display.display();      // Show initial text
+}
+
+// inits EEPROM to all zeroes
+void initEEPROM(){
+    for (int i = 0 ; i < EEPROM.length() ; i++) {
+    EEPROM.write(i, 0);
+  }
+}
+
+// computes a moving average of last 10 temps and returns it.
 float tempAvg(float temp, int counter, int sensor){
   float* temparrayspes;
   switch(sensor) {
@@ -118,6 +171,7 @@ float tempAvg(float temp, int counter, int sensor){
   avgsum = tempsum/10.0;
   return avgsum;
   }
+  
 // function to put the relay according to set temps
 void putRelay(float* temp){
   if(safetyCheck){
@@ -130,6 +184,7 @@ void putRelay(float* temp){
   } else {digitalWrite(relayPin, HIGH);}
 }
 
+// update vCC to compensate voltage drop
 void setvCC(){
   vCC = 2*(analogRead(ref)/1024.0)*v33;
   if(debug){
@@ -138,6 +193,7 @@ void setvCC(){
   }
   }
 
+// returns all the sensor temperature values.
 float* getTemp(){
   float rPt[3];
   float vPt[3];
@@ -190,6 +246,7 @@ float* getTemp(){
   return temp;
 }
 
+// prints temperature values to the displays
 void showValues(float* temp){
   if(safetyCheck){
     display.clearDisplay();
