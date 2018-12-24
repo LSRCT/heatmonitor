@@ -19,6 +19,7 @@ const float onTemp = 25;
 const float offTemp = 27;
 
 const int relayPin = 4;
+const int relayPin2 = 1;
 const int groundPin = 3;
 const int buttonPin = 11;
 
@@ -95,7 +96,7 @@ void loop() {
     Serial.println(temp[1]);
     Serial.println(temp[2]);
   }
-  putRelay(temp[0]);
+  putRelay(temp);
   showValues(temp);
   delay(100);
   counter++;
@@ -118,12 +119,12 @@ float tempAvg(float temp, int counter, int sensor){
   return avgsum;
   }
 // function to put the relay according to set temps
-void putRelay(float temp){
+void putRelay(float* temp){
   if(safetyCheck){
-    if(temp<=onTemp){
+    if(temp[0]<=onTemp){
       digitalWrite(relayPin, LOW);
       }
-    if(temp>=offTemp){
+    if(temp[0]>=offTemp){
       digitalWrite(relayPin, HIGH);
       }
   } else {digitalWrite(relayPin, HIGH);}
