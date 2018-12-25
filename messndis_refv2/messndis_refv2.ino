@@ -10,8 +10,9 @@
 int safetyCheck = 1;
 int counter = 0;
 int EEPROMcounter = 0;
+int displaysensor = 0;
 // multiply this value by the updateRate+50ms to get time between EEPROM savings
-const int EEPROMtime = 10;
+const int EEPROMtime = 1000;
 int EEPROMadress = 0;
 
 // debug:
@@ -20,13 +21,13 @@ int EEPROMadress = 0;
 // 2: verbose debug
 int debug = 0;
 
-const float onTemp = 25;
-const float offTemp = 27;
+const float onTemp[2] = {50,60};
+const float offTemp[2] = {60,57};
 // time between measurements in ms
 const int updateRate = 100;
 
 const int relayPin = 4;
-const int relayPin2 = 1;
+const int relayPin2 = 5;
 const int groundPin = 3;
 const int buttonPin = 11;
 
@@ -52,13 +53,15 @@ const float alphaPt = 0.003851;
 const float r0Pt = 1000.0;
 // value substraced from rPt before calculations
 // use this to compensate for different length cables
-const float rcorrect = 2.0;
+const float rcorrect = 4.0;
 
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 #define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 void setup() {
+  pinMode(13,OUTPUT);
+  digitalWrite(13, HIGH);
   Serial.begin(9600);
   // 3.3V analog reference
   analogReference(EXTERNAL);
@@ -66,6 +69,8 @@ void setup() {
   initRelays();
   // put Vcc to correct value
   setvCC();
+  initEEPROM();
+  digitalWrite(13, LOW);
 }
 void loop() {
   if(counter>9){counter = 0;}
@@ -88,7 +93,7 @@ void loop() {
     Serial.println(temp[2]);
   }
   putRelay(temp);
-  showValues(temp);
+  showValues(temp,0);
   if(EEPROMcounter>EEPROMtime){
     saveToEEPROM(temp[0]);
     EEPROMcounter = 0;}
@@ -98,27 +103,35 @@ void loop() {
   EEPROMcounter++;
 }
 
+// sends the whole EEPROM if anything is recieved
 void checkSerialandSend(){
   if (Serial.available() > 0) {
     Serial.read();
     for (int i = 0 ; i < EEPROM.length() ; i++) {
-      Serial.print(EEPROM.read(i));
-      Serial.print(";");
+      Serial.println(EEPROM.read(i));
+      //Serial.println(";");
     }
   }
 }
 
-// saves value to current EEPROM adress and writes a 254 to the next value
+// saves value to current EEPROM adress and writes a 250 to the next value
 void saveToEEPROM(float value){
-  byte rvalue = round(value);
-  if(rvalue<250){
-  EEPROM.write(EEPROMadress, rvalue);
+  value = round(value);
+  if(value<250){
+  EEPROM.write(EEPROMadress, byte(value));
   EEPROMadress++;
   if(EEPROMadress == EEPROM.length()){
     EEPROMadress = 0;
     }
   EEPROM.write(EEPROMadress, byte(250));
   }
+}
+
+//sets EEPROM to all 0
+void clearEEPROM(){
+    for (int i = 0 ; i < EEPROM.length() ; i++) {
+      EEPROM.write(i,0);
+    }
 }
 
 // sets up relayPins and the res ground pin
@@ -147,11 +160,14 @@ void initDisplay(){
   display.display();      // Show initial text
 }
 
-// inits EEPROM to all zeroes
+// inits EEPROM to where we stopped
 void initEEPROM(){
     for (int i = 0 ; i < EEPROM.length() ; i++) {
-    EEPROM.write(i, 0);
-  }
+      if(EEPROM.read(i)==byte(250)){
+        EEPROMadress = i;
+        break;
+      }
+    }
 }
 
 // computes a moving average of last 10 temps and returns it.
@@ -175,13 +191,22 @@ float tempAvg(float temp, int counter, int sensor){
 // function to put the relay according to set temps
 void putRelay(float* temp){
   if(safetyCheck){
-    if(temp[0]<=onTemp){
+    if(temp[0]<=onTemp[0]){
       digitalWrite(relayPin, LOW);
       }
-    if(temp[0]>=offTemp){
+    if(temp[0]>=offTemp[0]){
       digitalWrite(relayPin, HIGH);
       }
-  } else {digitalWrite(relayPin, HIGH);}
+    if(temp[1]>onTemp[1]){
+      digitalWrite(relayPin2, LOW);
+      }
+    if(temp[1]<=offTemp[1]){
+      digitalWrite(relayPin2, HIGH);
+      } 
+  } else {
+      digitalWrite(relayPin, HIGH);
+      digitalWrite(relayPin2, HIGH);
+    }
 }
 
 // update vCC to compensate voltage drop
@@ -247,25 +272,56 @@ float* getTemp(){
 }
 
 // prints temperature values to the displays
-void showValues(float* temp){
+void showValues(float* temp, int sensor){
   if(safetyCheck){
     display.clearDisplay();
+    display.setCursor(0,0);
+    display.setTextSize(1);
+    display.print(F("S1:"));
+    //display.print((sensor+1));
     display.setTextSize(2);
-    display.setCursor((126/2)-11*2,0);
-    display.print(round(temp[0]));
-    display.write(247);
-    display.println(F("C"));
+    //display.setCursor((126/2)-11*2,0);
+    if(round(temp[sensor]) < 150){
+      display.print(round(temp[sensor]));
+      display.setTextSize(1);
+      display.write(247);
+      display.println(F("C"));
+    } else{display.write(195);} 
+    display.setCursor((126/2),0);
+    display.setTextSize(1);
+    display.print(F("S2: "));
+    display.setTextSize(2);
+    if(round(temp[1]) < 150){
+      display.print(round(temp[1]));
+      display.setTextSize(1);
+      display.write(247);
+      display.print(F("C"));
+    } else{display.write(195);}
+  //display.write(247);
+  //display.println(F("C"));
   //  display.print(round(temp[1]));
   //  display.write(233);
     display.setTextSize(1);
-    display.print(F("ON: "));
-    display.setTextSize(2);
-    display.print(round(onTemp));
-    display.setCursor((126/2),16);
-    display.setTextSize(1);
+    display.setCursor(0,16);
+    display.print(F("ON:  "));
+    display.print(round(onTemp[sensor]));
+    display.write(247);
+    display.println(F("C"));
+    display.setCursor(0,24);
     display.print(F("OFF: "));
-    display.setTextSize(2);
-    display.print(round(offTemp));
+    display.print(round(offTemp[0]));
+    display.write(247);
+    display.println(F("C"));
+    display.setCursor((126/2),16);
+    display.print(F("ON:  "));
+    display.print(round(onTemp[1]));
+    display.write(247);
+    display.println(F("C"));
+    display.setCursor((126/2),24);
+    display.print(F("OFF: "));
+    display.print(round(offTemp[1]));
+    display.write(247);
+    display.println(F("C"));
     display.display();
   } 
   else {
