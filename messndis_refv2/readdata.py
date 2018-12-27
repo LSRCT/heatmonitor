@@ -18,7 +18,18 @@ def readSerial():
         if stopcounter == 1024:
             return valuearray
             break
+
+def saveData(data):
+    if data:
+        file = open('heatdata.csv','a')
+        file.write('Heatdata,'+',\n')
+        file.write('Number,Data,Timestamp'+"\n")
+        for i in range(len(data)):
+            file.write(str(i)+','+str(data[i])+','+str(((float(i)*1000*(100+50)))/(1000*60*60))+"\n")
+        file.close()
+
 if __name__ == "__main__":
     data = readSerial()
+    saveData(data)
     plt.plot(range(len(data)),data)
     plt.show()
