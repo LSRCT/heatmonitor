@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-import serial
+import serial
 import serial.tools.list_ports
 import time
 import matplotlib.pyplot as plt
@@ -39,5 +39,3 @@ if __name__ == "__main__":
     data["Timestamp[h]"] = raw[0]
     data["Temp[°C]"] = raw[1]
     dTB.saveToCSV(data)
-#    plt.plot(range(len(data)),data)
-#    plt.show()
