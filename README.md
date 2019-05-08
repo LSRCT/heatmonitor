@@ -1,2 +1,2 @@
 # heatmonitor
-I made this to control a the central heating of my parents house using an arduino and basic circuitry
+I made this to control the central heating of a house using an arduino and basic circuitry.
